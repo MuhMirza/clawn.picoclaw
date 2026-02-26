@@ -116,7 +116,11 @@ func (p *Provider) Chat(
 	// The key is typically the agent ID — stable per agent, shared across requests.
 	// See: https://platform.openai.com/docs/guides/prompt-caching
 	if cacheKey, ok := options["prompt_cache_key"].(string); ok && cacheKey != "" {
-		requestBody["prompt_cache_key"] = cacheKey
+		lowerModel := strings.ToLower(model)
+		// Google's OpenAI compatibility layer strictly rejects unknown fields like prompt_cache_key
+		if !strings.Contains(lowerModel, "gemini") {
+			requestBody["prompt_cache_key"] = cacheKey
+		}
 	}
 
 	jsonData, err := json.Marshal(requestBody)
