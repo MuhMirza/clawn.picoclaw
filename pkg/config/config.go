@@ -202,6 +202,14 @@ type ChannelsConfig struct {
 	OneBot   OneBotConfig   `json:"onebot"`
 	WeCom    WeComConfig    `json:"wecom"`
 	WeComApp WeComAppConfig `json:"wecom_app"`
+	Webchat  WebchatConfig  `json:"webchat"`
+}
+
+type WebchatConfig struct {
+	Enabled   bool                `json:"enabled"    env:"PICOCLAW_CHANNELS_WEBCHAT_ENABLED"`
+	Host      string              `json:"host"       env:"PICOCLAW_CHANNELS_WEBCHAT_HOST"`
+	Port      int                 `json:"port"       env:"PICOCLAW_CHANNELS_WEBCHAT_PORT"`
+	AllowFrom FlexibleStringSlice `json:"allow_from" env:"PICOCLAW_CHANNELS_WEBCHAT_ALLOW_FROM"`
 }
 
 type WhatsAppConfig struct {
