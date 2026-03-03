@@ -51,7 +51,7 @@ func (c *WebchatChannel) Start(ctx context.Context) error {
 		}
 	}()
 
-	c.setRunning(true)
+	c.SetRunning(true)
 	logger.InfoCF("webchat", "Webchat channel listening on http://%s", map[string]any{"addr": addr})
 
 	go func() {
@@ -64,7 +64,7 @@ func (c *WebchatChannel) Start(ctx context.Context) error {
 
 func (c *WebchatChannel) Stop(ctx context.Context) error {
 	logger.InfoC("webchat", "Stopping Webchat HTTP server...")
-	c.setRunning(false)
+	c.SetRunning(false)
 
 	if c.server != nil {
 		c.server.Shutdown(ctx)
@@ -158,8 +158,11 @@ func (c *WebchatChannel) handleStream(w http.ResponseWriter, r *http.Request) {
 
 	// Fire into PicoClaw bus
 	c.HandleMessage(
-		clientID, // SenderID (mapped to web userid)
-		clientID, // ChatID
+		r.Context(),
+		bus.Peer{Kind: "direct", ID: clientID},
+		uniqueID(), // MessageID
+		clientID,   // SenderID (mapped to web userid)
+		clientID,   // ChatID
 		req.Content,
 		nil, // no media yet
 		map[string]string{
