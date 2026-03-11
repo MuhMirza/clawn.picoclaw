@@ -484,7 +484,8 @@ func (c *WhatsAppNativeChannel) ServeHTTP(w http.ResponseWriter, r *http.Request
 	if client != nil && client.IsConnected() && client.Store.ID != nil {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"status": "connected",
+			"status":    "connected",
+			"connected": true,
 		})
 
 		c.mu.Lock()
@@ -518,6 +519,9 @@ func (c *WhatsAppNativeChannel) ServeHTTP(w http.ResponseWriter, r *http.Request
 		response["status"] = "pairing"
 		response["qrDataUrl"] = qrDataURL
 	} else {
+		if qrStatus == "connected" {
+			response["connected"] = true
+		}
 		response["status"] = qrStatus
 	}
 
