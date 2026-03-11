@@ -283,6 +283,9 @@ func TestDefaultConfig_Channels(t *testing.T) {
 	if cfg.Channels.Slack.Enabled {
 		t.Error("Slack should be disabled by default")
 	}
+	if cfg.Channels.Matrix.Enabled {
+		t.Error("Matrix should be disabled by default")
+	}
 }
 
 // TestDefaultConfig_WebTools verifies web tools config
@@ -293,7 +296,7 @@ func TestDefaultConfig_WebTools(t *testing.T) {
 	if cfg.Tools.Web.Brave.MaxResults != 5 {
 		t.Error("Expected Brave MaxResults 5, got ", cfg.Tools.Web.Brave.MaxResults)
 	}
-	if cfg.Tools.Web.Brave.APIKey != "" {
+	if len(cfg.Tools.Web.Brave.APIKeys) != 0 {
 		t.Error("Brave API key should be empty by default")
 	}
 	if cfg.Tools.Web.DuckDuckGo.MaxResults != 5 {
@@ -435,6 +438,18 @@ func TestLoadConfig_WebToolsProxy(t *testing.T) {
 }
 
 // TestDefaultConfig_DMScope verifies the default dm_scope value
+// TestDefaultConfig_SummarizationThresholds verifies summarization defaults
+func TestDefaultConfig_SummarizationThresholds(t *testing.T) {
+	cfg := DefaultConfig()
+
+	if cfg.Agents.Defaults.SummarizeMessageThreshold != 20 {
+		t.Errorf("SummarizeMessageThreshold = %d, want 20", cfg.Agents.Defaults.SummarizeMessageThreshold)
+	}
+	if cfg.Agents.Defaults.SummarizeTokenPercent != 75 {
+		t.Errorf("SummarizeTokenPercent = %d, want 75", cfg.Agents.Defaults.SummarizeTokenPercent)
+	}
+}
+
 func TestDefaultConfig_DMScope(t *testing.T) {
 	cfg := DefaultConfig()
 

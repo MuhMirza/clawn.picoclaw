@@ -249,7 +249,7 @@ func TestWebFetchTool_PayloadTooLarge(t *testing.T) {
 
 // TestWebTool_WebSearch_NoApiKey verifies that no tool is created when API key is missing
 func TestWebTool_WebSearch_NoApiKey(t *testing.T) {
-	tool, err := NewWebSearchTool(WebSearchToolOptions{BraveEnabled: true, BraveAPIKey: ""})
+	tool, err := NewWebSearchTool(WebSearchToolOptions{BraveEnabled: true, BraveAPIKeys: nil})
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -269,7 +269,11 @@ func TestWebTool_WebSearch_NoApiKey(t *testing.T) {
 
 // TestWebTool_WebSearch_MissingQuery verifies error handling for missing query
 func TestWebTool_WebSearch_MissingQuery(t *testing.T) {
-	tool, err := NewWebSearchTool(WebSearchToolOptions{BraveEnabled: true, BraveAPIKey: "test-key", BraveMaxResults: 5})
+	tool, err := NewWebSearchTool(WebSearchToolOptions{
+		BraveEnabled:    true,
+		BraveAPIKeys:    []string{"test-key"},
+		BraveMaxResults: 5,
+	})
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -553,7 +557,7 @@ func TestNewWebSearchTool_PropagatesProxy(t *testing.T) {
 	t.Run("perplexity", func(t *testing.T) {
 		tool, err := NewWebSearchTool(WebSearchToolOptions{
 			PerplexityEnabled:    true,
-			PerplexityAPIKey:     "k",
+			PerplexityAPIKeys:    []string{"k"},
 			PerplexityMaxResults: 3,
 			Proxy:                "http://127.0.0.1:7890",
 		})
@@ -572,7 +576,7 @@ func TestNewWebSearchTool_PropagatesProxy(t *testing.T) {
 	t.Run("brave", func(t *testing.T) {
 		tool, err := NewWebSearchTool(WebSearchToolOptions{
 			BraveEnabled:    true,
-			BraveAPIKey:     "k",
+			BraveAPIKeys:    []string{"k"},
 			BraveMaxResults: 3,
 			Proxy:           "http://127.0.0.1:7890",
 		})
@@ -650,7 +654,7 @@ func TestWebTool_TavilySearch_Success(t *testing.T) {
 
 	tool, err := NewWebSearchTool(WebSearchToolOptions{
 		TavilyEnabled:    true,
-		TavilyAPIKey:     "test-key",
+		TavilyAPIKeys:    []string{"test-key"},
 		TavilyBaseURL:    server.URL,
 		TavilyMaxResults: 5,
 	})
@@ -679,5 +683,252 @@ func TestWebTool_TavilySearch_Success(t *testing.T) {
 	// Should mention via Tavily
 	if !strings.Contains(result.ForUser, "via Tavily") {
 		t.Errorf("Expected 'via Tavily' in output, got: %s", result.ForUser)
+	}
+}
+
+func TestAPIKeyPool(t *testing.T) {
+	pool := NewAPIKeyPool([]string{"key1", "key2", "key3"})
+	if len(pool.keys) != 3 {
+		t.Fatalf("expected 3 keys, got %d", len(pool.keys))
+	}
+	if pool.keys[0] != "key1" || pool.keys[1] != "key2" || pool.keys[2] != "key3" {
+		t.Fatalf("unexpected keys: %v", pool.keys)
+	}
+
+	// Test Iterator: each iterator should cover all keys exactly once
+	iter := pool.NewIterator()
+	expected := []string{"key1", "key2", "key3"}
+	for i, want := range expected {
+		k, ok := iter.Next()
+		if !ok {
+			t.Fatalf("iter.Next() returned false at step %d", i)
+		}
+		if k != want {
+			t.Errorf("step %d: expected %s, got %s", i, want, k)
+		}
+	}
+	// Should be exhausted
+	if _, ok := iter.Next(); ok {
+		t.Errorf("expected iterator exhausted after all keys")
+	}
+
+	// Second iterator starts at next position (load balancing)
+	iter2 := pool.NewIterator()
+	k, ok := iter2.Next()
+	if !ok {
+		t.Fatal("iter2.Next() returned false")
+	}
+	if k != "key2" {
+		t.Errorf("expected key2 (round-robin), got %s", k)
+	}
+
+	// Empty pool
+	emptyPool := NewAPIKeyPool([]string{})
+	emptyIter := emptyPool.NewIterator()
+	if _, ok := emptyIter.Next(); ok {
+		t.Errorf("expected false for empty pool")
+	}
+
+	// Single key pool
+	singlePool := NewAPIKeyPool([]string{"single"})
+	singleIter := singlePool.NewIterator()
+	if k, ok := singleIter.Next(); !ok || k != "single" {
+		t.Errorf("expected single, got %s (ok=%v)", k, ok)
+	}
+	if _, ok := singleIter.Next(); ok {
+		t.Errorf("expected exhausted after single key")
+	}
+}
+
+func TestWebTool_TavilySearch_Failover(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("failed to decode payload: %v", err)
+		}
+
+		apiKey := payload["api_key"].(string)
+
+		if apiKey == "key1" {
+			w.WriteHeader(http.StatusTooManyRequests)
+			w.Write([]byte("Rate limited"))
+			return
+		}
+
+		if apiKey == "key2" {
+			// Success
+			response := map[string]any{
+				"results": []map[string]any{
+					{
+						"title":   "Success Result",
+						"url":     "https://example.com/success",
+						"content": "Success content",
+					},
+				},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(response)
+			return
+		}
+
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer server.Close()
+
+	tool, err := NewWebSearchTool(WebSearchToolOptions{
+		TavilyEnabled:    true,
+		TavilyAPIKeys:    []string{"key1", "key2"},
+		TavilyBaseURL:    server.URL,
+		TavilyMaxResults: 5,
+	})
+	if err != nil {
+		t.Fatalf("NewWebSearchTool() error: %v", err)
+	}
+
+	ctx := context.Background()
+	args := map[string]any{
+		"query": "test query",
+	}
+
+	result := tool.Execute(ctx, args)
+
+	if result.IsError {
+		t.Errorf("Expected success, got Error: %s", result.ForLLM)
+	}
+	if !strings.Contains(result.ForUser, "Success Result") {
+		t.Errorf("Expected failover to second key and success result, got: %s", result.ForUser)
+	}
+}
+
+func TestWebTool_GLMSearch_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("Expected POST request, got %s", r.Method)
+		}
+		if r.Header.Get("Content-Type") != "application/json" {
+			t.Errorf("Expected Content-Type application/json, got %s", r.Header.Get("Content-Type"))
+		}
+		if r.Header.Get("Authorization") != "Bearer test-glm-key" {
+			t.Errorf("Expected Authorization Bearer test-glm-key, got %s", r.Header.Get("Authorization"))
+		}
+
+		var payload map[string]any
+		json.NewDecoder(r.Body).Decode(&payload)
+		if payload["search_query"] != "test query" {
+			t.Errorf("Expected search_query 'test query', got %v", payload["search_query"])
+		}
+		if payload["search_engine"] != "search_std" {
+			t.Errorf("Expected search_engine 'search_std', got %v", payload["search_engine"])
+		}
+
+		response := map[string]any{
+			"id":      "web-search-test",
+			"created": 1709568000,
+			"search_result": []map[string]any{
+				{
+					"title":        "Test GLM Result",
+					"content":      "GLM search snippet",
+					"link":         "https://example.com/glm",
+					"media":        "Example",
+					"publish_date": "2026-03-04",
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	tool, err := NewWebSearchTool(WebSearchToolOptions{
+		GLMSearchEnabled: true,
+		GLMSearchAPIKey:  "test-glm-key",
+		GLMSearchBaseURL: server.URL,
+		GLMSearchEngine:  "search_std",
+	})
+	if err != nil {
+		t.Fatalf("NewWebSearchTool() error: %v", err)
+	}
+
+	result := tool.Execute(context.Background(), map[string]any{
+		"query": "test query",
+	})
+
+	if result.IsError {
+		t.Errorf("Expected success, got IsError=true: %s", result.ForLLM)
+	}
+	if !strings.Contains(result.ForUser, "Test GLM Result") {
+		t.Errorf("Expected 'Test GLM Result' in output, got: %s", result.ForUser)
+	}
+	if !strings.Contains(result.ForUser, "https://example.com/glm") {
+		t.Errorf("Expected URL in output, got: %s", result.ForUser)
+	}
+	if !strings.Contains(result.ForUser, "via GLM Search") {
+		t.Errorf("Expected 'via GLM Search' in output, got: %s", result.ForUser)
+	}
+}
+
+func TestWebTool_GLMSearch_APIError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"error":"invalid api key"}`))
+	}))
+	defer server.Close()
+
+	tool, err := NewWebSearchTool(WebSearchToolOptions{
+		GLMSearchEnabled: true,
+		GLMSearchAPIKey:  "bad-key",
+		GLMSearchBaseURL: server.URL,
+		GLMSearchEngine:  "search_std",
+	})
+	if err != nil {
+		t.Fatalf("NewWebSearchTool() error: %v", err)
+	}
+
+	result := tool.Execute(context.Background(), map[string]any{
+		"query": "test query",
+	})
+
+	if !result.IsError {
+		t.Errorf("Expected IsError=true for 401 response")
+	}
+	if !strings.Contains(result.ForLLM, "status 401") {
+		t.Errorf("Expected status 401 in error, got: %s", result.ForLLM)
+	}
+}
+
+func TestWebTool_GLMSearch_Priority(t *testing.T) {
+	// GLM Search should only be selected when all other providers are disabled
+	tool, err := NewWebSearchTool(WebSearchToolOptions{
+		DuckDuckGoEnabled:    true,
+		DuckDuckGoMaxResults: 5,
+		GLMSearchEnabled:     true,
+		GLMSearchAPIKey:      "test-key",
+		GLMSearchBaseURL:     "https://example.com",
+		GLMSearchEngine:      "search_std",
+	})
+	if err != nil {
+		t.Fatalf("NewWebSearchTool() error: %v", err)
+	}
+
+	// DuckDuckGo should win over GLM Search
+	if _, ok := tool.provider.(*DuckDuckGoSearchProvider); !ok {
+		t.Errorf("Expected DuckDuckGoSearchProvider when both enabled, got %T", tool.provider)
+	}
+
+	// With DuckDuckGo disabled, GLM Search should be selected
+	tool2, err := NewWebSearchTool(WebSearchToolOptions{
+		DuckDuckGoEnabled: false,
+		GLMSearchEnabled:  true,
+		GLMSearchAPIKey:   "test-key",
+		GLMSearchBaseURL:  "https://example.com",
+		GLMSearchEngine:   "search_std",
+	})
+	if err != nil {
+		t.Fatalf("NewWebSearchTool() error: %v", err)
+	}
+	if _, ok := tool2.provider.(*GLMSearchProvider); !ok {
+		t.Errorf("Expected GLMSearchProvider when only GLM enabled, got %T", tool2.provider)
 	}
 }
