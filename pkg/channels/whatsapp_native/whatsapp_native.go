@@ -10,7 +10,10 @@ package whatsapp
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +22,7 @@ import (
 	"time"
 
 	"github.com/mdp/qrterminal/v3"
+	qrcode "github.com/skip2/go-qrcode"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/store/sqlstore"
@@ -59,6 +63,9 @@ type WhatsAppNativeChannel struct {
 	reconnecting bool
 	stopping     atomic.Bool    // set once Stop begins; prevents new wg.Add calls
 	wg           sync.WaitGroup // tracks background goroutines (QR handler, reconnect)
+
+	qrDataURL string
+	qrStatus  string // "unpaired", "pairing", "connected"
 }
 
 // NewWhatsAppNativeChannel creates a WhatsApp channel that uses whatsmeow for connection.
@@ -76,6 +83,7 @@ func NewWhatsAppNativeChannel(
 		BaseChannel: base,
 		config:      cfg,
 		storePath:   storePath,
+		qrStatus:    "unpaired",
 	}
 	return c, nil
 }
@@ -186,12 +194,24 @@ func (c *WhatsAppNativeChannel) Start(ctx context.Context) error {
 						return
 					}
 					if evt.Event == "code" {
-						logger.InfoCF("whatsapp", "Scan this QR code with WhatsApp (Linked Devices):", nil)
+						logger.InfoCF("whatsapp", "New QR code generated for pairing", nil)
+
+						// Also print to terminal for CLI users
 						qrterminal.GenerateWithConfig(evt.Code, qrterminal.Config{
 							Level:      qrterminal.L,
 							Writer:     os.Stdout,
 							HalfBlocks: true,
 						})
+
+						// Generate Base64 PNG for Web API
+						png, err := qrcode.Encode(evt.Code, qrcode.Medium, 256)
+						if err == nil {
+							base64PNG := base64.StdEncoding.EncodeToString(png)
+							c.mu.Lock()
+							c.qrDataURL = "data:image/png;base64," + base64PNG
+							c.qrStatus = "pairing"
+							c.mu.Unlock()
+						}
 					} else {
 						logger.InfoCF("whatsapp", "WhatsApp login event", map[string]any{"event": evt.Event})
 					}
@@ -445,4 +465,61 @@ func parseJID(s string) (types.JID, error) {
 		return types.ParseJID(s)
 	}
 	return types.NewJID(s, types.DefaultUserServer), nil
+}
+
+// WebhookPath returns the HTTP endpoint path for WhatsApp Native features
+func (c *WhatsAppNativeChannel) WebhookPath() string {
+	return "/api/whatsapp/pair"
+}
+
+// ServeHTTP handles incoming HTTP requests for WhatsApp pairing
+func (c *WhatsAppNativeChannel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	c.mu.Lock()
+	client := c.client
+	qrStatus := c.qrStatus
+	qrDataURL := c.qrDataURL
+	c.mu.Unlock()
+
+	// If already connected, return success early
+	if client != nil && client.IsConnected() && client.Store.ID != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "connected",
+		})
+
+		c.mu.Lock()
+		c.qrStatus = "connected"
+		c.mu.Unlock()
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	// If force is requested or we're in unpaired state, potentially trigger a restart
+	force := r.URL.Query().Get("force") == "true"
+	if force && qrStatus != "pairing" {
+		// Just to be safe, restart the QR generation by returning an error
+		// that implies the client handles the reconnect, but for now we'll just
+		// return the current pairing status or unpaired to prompt the user
+		c.mu.Lock()
+		c.qrStatus = "unpaired"
+		c.qrDataURL = ""
+		qrStatus = "unpaired"
+		qrDataURL = ""
+		c.mu.Unlock()
+
+		// Ideally we would trigger a reconnect here, but since the QR loop runs
+		// continuously on startup when unpaired, it should automatically generate
+		// the next code. We just wait for the next evt.Code.
+	}
+
+	response := map[string]interface{}{}
+	if qrDataURL != "" {
+		response["status"] = "pairing"
+		response["qrDataUrl"] = qrDataURL
+	} else {
+		response["status"] = qrStatus
+	}
+
+	json.NewEncoder(w).Encode(response)
 }
