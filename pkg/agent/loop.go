@@ -42,14 +42,15 @@ type AgentLoop struct {
 
 // processOptions configures how a message is processed
 type processOptions struct {
-	SessionKey      string // Session identifier for history/context
-	Channel         string // Target channel for tool execution
-	ChatID          string // Target chat ID for tool execution
-	UserMessage     string // User message content (may include prefix)
-	DefaultResponse string // Response when LLM returns empty
-	EnableSummary   bool   // Whether to trigger summarization
-	SendResponse    bool   // Whether to send response via bus
-	NoHistory       bool   // If true, don't load session history (for heartbeat)
+	SessionKey      string            // Session identifier for history/context
+	Channel         string            // Target channel for tool execution
+	ChatID          string            // Target chat ID for tool execution
+	UserMessage     string            // User message content (may include prefix)
+	DefaultResponse string            // Response when LLM returns empty
+	EnableSummary   bool              // Whether to trigger summarization
+	SendResponse    bool              // Whether to send response via bus
+	NoHistory       bool              // If true, don't load session history (for heartbeat)
+	Metadata        map[string]string // Inbound metadata for routing/provider attribution
 }
 
 func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers.LLMProvider) *AgentLoop {
@@ -321,6 +322,13 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 			"matched_by":  route.MatchedBy,
 		})
 
+	meta := map[string]string{}
+	for k, v := range msg.Metadata {
+		meta[k] = v
+	}
+	meta["sender_id"] = msg.SenderID
+	meta["chat_id"] = msg.ChatID
+	meta["channel"] = msg.Channel
 	return al.runAgentLoop(ctx, agent, processOptions{
 		SessionKey:      sessionKey,
 		Channel:         msg.Channel,
@@ -329,6 +337,7 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 		DefaultResponse: "I've completed processing but have no response to give.",
 		EnableSummary:   true,
 		SendResponse:    false,
+		Metadata:        meta,
 	})
 }
 
@@ -520,11 +529,7 @@ func (al *AgentLoop) runLLMIteration(
 			if len(agent.Candidates) > 1 && al.fallback != nil {
 				fbResult, fbErr := al.fallback.Execute(ctx, agent.Candidates,
 					func(ctx context.Context, provider, model string) (*providers.LLMResponse, error) {
-						return agent.Provider.Chat(ctx, messages, providerToolDefs, model, map[string]any{
-							"max_tokens":       agent.MaxTokens,
-							"temperature":      agent.Temperature,
-							"prompt_cache_key": agent.ID,
-						})
+						return agent.Provider.Chat(ctx, messages, providerToolDefs, model, buildProviderOptions(agent, opts, model, agent.MaxTokens, agent.Temperature))
 					},
 				)
 				if fbErr != nil {
@@ -537,11 +542,7 @@ func (al *AgentLoop) runLLMIteration(
 				}
 				return fbResult.Response, nil
 			}
-			return agent.Provider.Chat(ctx, messages, providerToolDefs, agent.Model, map[string]any{
-				"max_tokens":       agent.MaxTokens,
-				"temperature":      agent.Temperature,
-				"prompt_cache_key": agent.ID,
-			})
+			return agent.Provider.Chat(ctx, messages, providerToolDefs, agent.Model, buildProviderOptions(agent, opts, agent.Model, agent.MaxTokens, agent.Temperature))
 		}
 
 		// Retry loop for context/token errors
@@ -848,6 +849,45 @@ func (al *AgentLoop) GetStartupInfo() map[string]any {
 }
 
 // formatMessagesForLog formats messages for logging
+func buildProviderOptions(agent *AgentInstance, opts processOptions, model string, maxTokens int, temperature float64) map[string]any {
+	out := map[string]any{
+		"max_tokens":       maxTokens,
+		"temperature":      temperature,
+		"prompt_cache_key": agent.ID,
+	}
+	metadata := map[string]any{
+		"clawn_agent_id":       agent.ID,
+		"clawn_agent_slug":     agent.ID,
+		"clawn_runtime_engine": "picoclaw",
+		"clawn_model_route":    model,
+	}
+	requestTags := []string{"clawn-managed", "runtime:picoclaw", fmt.Sprintf("agent:%s", agent.ID), fmt.Sprintf("route:%s", model)}
+	if opts.Channel != "" {
+		metadata["clawn_channel"] = opts.Channel
+	}
+	if opts.ChatID != "" {
+		metadata["clawn_chat_id"] = opts.ChatID
+	}
+	if opts.Metadata != nil {
+		if v := strings.TrimSpace(opts.Metadata["sender_id"]); v != "" {
+			metadata["clawn_user_id"] = v
+			out["user"] = "aiagenz"
+		}
+		if v := strings.TrimSpace(opts.Metadata["account_id"]); v != "" {
+			metadata["clawn_account_id"] = v
+		}
+		if v := strings.TrimSpace(opts.Metadata["project_id"]); v != "" {
+			metadata["clawn_project_id"] = v
+			out["end_user"] = v
+			requestTags = append(requestTags, fmt.Sprintf("project:%s", v))
+		}
+	}
+	out["metadata"] = metadata
+	out["request_tags"] = requestTags
+	out["agent_id"] = agent.ID
+	return out
+}
+
 func formatMessagesForLog(messages []providers.Message) string {
 	if len(messages) == 0 {
 		return "[]"
