@@ -108,8 +108,13 @@ func (c *WebchatChannel) Send(ctx context.Context, msg bus.OutboundMessage) erro
 }
 
 type webchatRequest struct {
-	SessionID string `json:"session_id"`
-	Content   string `json:"content"`
+	SessionID   string            `json:"session_id"`
+	Content     string            `json:"content"`
+	User        string            `json:"user"`
+	EndUser     string            `json:"end_user"`
+	AgentID     string            `json:"agent_id"`
+	Metadata    map[string]any    `json:"metadata"`
+	RequestTags []string          `json:"request_tags"`
 }
 
 // handleStream handles inbound POST requests and streams the reply back as SSE
@@ -156,17 +161,54 @@ func (c *WebchatChannel) handleStream(w http.ResponseWriter, r *http.Request) {
 		c.mu.Unlock()
 	}()
 
+	metadata := map[string]string{
+		"peer_kind": "direct",
+		"peer_id":   clientID,
+		"user_id":   clientID,
+	}
+	if req.User != "" {
+		metadata["sender_id"] = req.User
+		metadata["user_id"] = req.User
+	}
+	if req.EndUser != "" {
+		metadata["project_id"] = req.EndUser
+	}
+	if req.AgentID != "" {
+		metadata["agent_id"] = req.AgentID
+	}
+	if len(req.RequestTags) > 0 {
+		if tagsJSON, err := json.Marshal(req.RequestTags); err == nil {
+			metadata["request_tags"] = string(tagsJSON)
+		}
+	}
+	if req.Metadata != nil {
+		for k, v := range req.Metadata {
+			switch val := v.(type) {
+			case string:
+				if val != "" {
+					metadata[k] = val
+				}
+			case fmt.Stringer:
+				metadata[k] = val.String()
+			case float64:
+				metadata[k] = fmt.Sprintf("%v", val)
+			case bool:
+				metadata[k] = fmt.Sprintf("%v", val)
+			default:
+				if encoded, err := json.Marshal(v); err == nil {
+					metadata[k] = string(encoded)
+				}
+			}
+		}
+	}
+
 	// Fire into PicoClaw bus
 	c.HandleMessage(
-		clientID, // SenderID (mapped to web userid)
-		clientID, // ChatID
+		clientID,
+		clientID,
 		req.Content,
-		nil, // no media yet
-		map[string]string{
-			"peer_kind": "direct",
-			"peer_id":   clientID,
-			"user_id":   clientID,
-		},
+		nil,
+		metadata,
 	)
 
 	// Stream responses back to caller
