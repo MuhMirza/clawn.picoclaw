@@ -179,6 +179,22 @@ func (p *Provider) buildRequestBody(
 		}
 	}
 
+	if user, ok := options["user"].(string); ok && user != "" {
+		requestBody["user"] = user
+	}
+	if endUser, ok := options["end_user"].(string); ok && endUser != "" {
+		requestBody["end_user"] = endUser
+	}
+	if agentID, ok := options["agent_id"].(string); ok && agentID != "" {
+		requestBody["agent_id"] = agentID
+	}
+	if metadata, ok := options["metadata"].(map[string]any); ok && len(metadata) > 0 {
+		requestBody["metadata"] = metadata
+	}
+	if requestTags, ok := options["request_tags"].([]string); ok && len(requestTags) > 0 {
+		requestBody["request_tags"] = requestTags
+	}
+
 	// Merge extra body fields configured per-provider/model.
 	// These are injected last so they take precedence over defaults.
 	for k, v := range p.extraBody {

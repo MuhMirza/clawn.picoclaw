@@ -84,6 +84,7 @@ type processOptions struct {
 	ForcedSkills            []string            // Skills explicitly requested for this message
 	SystemPromptOverride    string              // Override the default system prompt (Used by SubTurns)
 	Media                   []string            // media:// refs from inbound message
+	Metadata                map[string]string   // Inbound metadata for routing/provider attribution
 	InitialSteeringMessages []providers.Message // Steering messages from refactor/agent
 	DefaultResponse         string              // Response when LLM returns empty
 	EnableSummary           bool                // Whether to trigger summarization
@@ -1397,6 +1398,14 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 			"route_channel": route.Channel,
 		})
 
+	meta := map[string]string{}
+	for k, v := range msg.Metadata {
+		meta[k] = v
+	}
+	meta["sender_id"] = msg.SenderID
+	meta["chat_id"] = msg.ChatID
+	meta["channel"] = msg.Channel
+
 	opts := processOptions{
 		SessionKey:        sessionKey,
 		Channel:           msg.Channel,
@@ -1407,6 +1416,7 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 		SenderDisplayName: msg.Sender.DisplayName,
 		UserMessage:       msg.Content,
 		Media:             msg.Media,
+		Metadata:          meta,
 		DefaultResponse:   defaultResponse,
 		EnableSummary:     true,
 		SendResponse:      false,
@@ -1932,6 +1942,7 @@ turnLoop:
 			"temperature":      ts.agent.Temperature,
 			"prompt_cache_key": ts.agent.ID,
 		}
+		applyClawnAttribution(llmOpts, ts.agent.ID, llmModel, ts.channel, ts.chatID, ts.opts.Metadata)
 		if useNativeSearch {
 			llmOpts["native_search"] = true
 		}
