@@ -569,6 +569,24 @@ func (c *PicoChannel) handleMessageSend(pc *picoConn, msg PicoMessage) {
 		"session_id": sessionID,
 		"conn_id":    pc.id,
 	}
+	if extra, ok := msg.Payload["metadata"].(map[string]any); ok {
+		for key, raw := range extra {
+			if value, ok := raw.(string); ok && strings.TrimSpace(value) != "" {
+				metadata[key] = strings.TrimSpace(value)
+			}
+		}
+	}
+	if tags, ok := msg.Payload["request_tags"].([]any); ok && len(tags) > 0 {
+		parts := make([]string, 0, len(tags))
+		for _, raw := range tags {
+			if value, ok := raw.(string); ok && strings.TrimSpace(value) != "" {
+				parts = append(parts, strings.TrimSpace(value))
+			}
+		}
+		if len(parts) > 0 {
+			metadata["request_tags"] = strings.Join(parts, ",")
+		}
+	}
 
 	logger.DebugCF("pico", "Received message", map[string]any{
 		"session_id": sessionID,

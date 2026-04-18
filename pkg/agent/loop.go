@@ -1942,7 +1942,7 @@ turnLoop:
 			"temperature":      ts.agent.Temperature,
 			"prompt_cache_key": ts.agent.ID,
 		}
-		applyClawnAttribution(llmOpts, ts.agent.ID, llmModel, ts.channel, ts.chatID, ts.opts.Metadata)
+		applyClawnAttribution(llmOpts, ts.agent.ID, activeModel, ts.channel, ts.chatID, ts.opts.Metadata)
 		if useNativeSearch {
 			llmOpts["native_search"] = true
 		}

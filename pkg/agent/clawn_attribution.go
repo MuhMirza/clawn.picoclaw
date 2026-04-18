@@ -42,6 +42,14 @@ func applyClawnAttribution(out map[string]any, agentID, model, channel, chatID s
 			out["end_user"] = v
 			requestTags = append(requestTags, fmt.Sprintf("project:%s", v))
 		}
+		if v := strings.TrimSpace(metadataIn["request_tags"]); v != "" {
+			for _, part := range strings.Split(v, ",") {
+				part = strings.TrimSpace(part)
+				if part != "" {
+					requestTags = append(requestTags, part)
+				}
+			}
+		}
 		if v := strings.TrimSpace(metadataIn["channel"]); v != "" && channel == "" {
 			metadata["clawn_channel"] = v
 		}
