@@ -77,6 +77,16 @@ func NewAgentInstance(
 	model := resolveAgentModel(agentCfg, defaults)
 	fallbacks := resolveAgentFallbacks(agentCfg, defaults)
 
+	// Prefer a provider resolved from the effective primary model config instead of
+	// always inheriting the bootstrap/shared provider passed into the registry.
+	// This matters for managed aliases (e.g. model_name=clawn) whose api_key/api_base
+	// only exist in model_list after runtime config rendering.
+	if mc, err := resolvedModelConfig(cfg, model, workspace); err == nil && mc != nil {
+		if resolvedProvider, _, err := providers.CreateProviderFromConfig(mc); err == nil && resolvedProvider != nil {
+			provider = resolvedProvider
+		}
+	}
+
 	restrict := defaults.RestrictToWorkspace
 	readRestrict := restrict && !defaults.AllowReadOutsideWorkspace
 

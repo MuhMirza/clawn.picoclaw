@@ -569,23 +569,29 @@ func (c *PicoChannel) handleMessageSend(pc *picoConn, msg PicoMessage) {
 		"session_id": sessionID,
 		"conn_id":    pc.id,
 	}
-	if extra, ok := msg.Payload["metadata"].(map[string]any); ok {
-		for key, raw := range extra {
-			if value, ok := raw.(string); ok && strings.TrimSpace(value) != "" {
-				metadata[key] = strings.TrimSpace(value)
+	if rawMeta, ok := msg.Payload["metadata"].(map[string]any); ok {
+		for key, value := range rawMeta {
+			key = strings.TrimSpace(key)
+			if key == "" || value == nil {
+				continue
 			}
+			metadata[key] = strings.TrimSpace(fmt.Sprint(value))
 		}
 	}
-	if tags, ok := msg.Payload["request_tags"].([]any); ok && len(tags) > 0 {
-		parts := make([]string, 0, len(tags))
-		for _, raw := range tags {
-			if value, ok := raw.(string); ok && strings.TrimSpace(value) != "" {
-				parts = append(parts, strings.TrimSpace(value))
+	if rawTags, ok := msg.Payload["request_tags"].([]any); ok && len(rawTags) > 0 {
+		tags := make([]string, 0, len(rawTags))
+		for _, raw := range rawTags {
+			tag := strings.TrimSpace(fmt.Sprint(raw))
+			if tag != "" && tag != "<nil>" {
+				tags = append(tags, tag)
 			}
 		}
-		if len(parts) > 0 {
-			metadata["request_tags"] = strings.Join(parts, ",")
+		if len(tags) > 0 {
+			metadata["request_tags"] = strings.Join(tags, ",")
 		}
+	}
+	if agentID, _ := msg.Payload["agent_id"].(string); strings.TrimSpace(agentID) != "" {
+		metadata["clawn_agent_id"] = strings.TrimSpace(agentID)
 	}
 
 	logger.DebugCF("pico", "Received message", map[string]any{
