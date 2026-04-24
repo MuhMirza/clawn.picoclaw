@@ -194,10 +194,14 @@ func (p *Provider) buildRequestBody(
 		}
 	}
 	if metadata, ok := options["metadata"].(map[string]any); ok && len(metadata) > 0 {
-		requestBody["metadata"] = metadata
+		if supportsMetadataField(p.apiBase) {
+			requestBody["metadata"] = metadata
+		}
 	}
 	if requestTags, ok := options["request_tags"].([]string); ok && len(requestTags) > 0 {
-		requestBody["request_tags"] = requestTags
+		if supportsRequestTagsField(p.apiBase) {
+			requestBody["request_tags"] = requestTags
+		}
 	}
 
 	// Merge extra body fields configured per-provider/model.
@@ -521,4 +525,17 @@ func supportsAgentIDField(apiBase string) bool {
 	}
 	host := strings.ToLower(u.Hostname())
 	return host == "litellm-proxy" || strings.HasSuffix(host, ".clawn.id") || strings.Contains(host, "clawn")
+}
+
+func supportsMetadataField(apiBase string) bool {
+	u, err := url.Parse(apiBase)
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	return host == "api.openai.com" || strings.HasSuffix(host, ".openai.azure.com") || host == "litellm-proxy" || strings.HasSuffix(host, ".clawn.id") || strings.Contains(host, "clawn")
+}
+
+func supportsRequestTagsField(apiBase string) bool {
+	return supportsMetadataField(apiBase)
 }
