@@ -194,13 +194,13 @@ func (p *Provider) buildRequestBody(
 		}
 	}
 	if metadata, ok := options["metadata"].(map[string]any); ok && len(metadata) > 0 {
-		if supportsMetadataField(p.apiBase) {
-			requestBody["metadata"] = metadata
+		if filtered := sanitizeProviderMetadata(p.apiBase, metadata); len(filtered) > 0 {
+			requestBody["metadata"] = filtered
 		}
 	}
 	if requestTags, ok := options["request_tags"].([]string); ok && len(requestTags) > 0 {
-		if supportsRequestTagsField(p.apiBase) {
-			requestBody["request_tags"] = requestTags
+		if filtered := sanitizeProviderRequestTags(p.apiBase, requestTags); len(filtered) > 0 {
+			requestBody["request_tags"] = filtered
 		}
 	}
 
@@ -538,4 +538,79 @@ func supportsMetadataField(apiBase string) bool {
 
 func supportsRequestTagsField(apiBase string) bool {
 	return supportsMetadataField(apiBase)
+}
+
+func sanitizeProviderMetadata(apiBase string, metadata map[string]any) map[string]any {
+	if len(metadata) == 0 || !supportsMetadataField(apiBase) {
+		return nil
+	}
+	filtered := make(map[string]any, len(metadata))
+	for k, v := range metadata {
+		key := strings.TrimSpace(k)
+		if key == "" {
+			continue
+		}
+		if isInternalProviderMetadataKey(key) && !isManagedCompatibleHost(apiBase) {
+			continue
+		}
+		filtered[key] = v
+	}
+	if len(filtered) == 0 {
+		return nil
+	}
+	return filtered
+}
+
+func sanitizeProviderRequestTags(apiBase string, requestTags []string) []string {
+	if len(requestTags) == 0 || !supportsRequestTagsField(apiBase) {
+		return nil
+	}
+	filtered := make([]string, 0, len(requestTags))
+	for _, tag := range requestTags {
+		tag = strings.TrimSpace(tag)
+		if tag == "" {
+			continue
+		}
+		if isInternalProviderRequestTag(tag) && !isManagedCompatibleHost(apiBase) {
+			continue
+		}
+		filtered = append(filtered, tag)
+	}
+	if len(filtered) == 0 {
+		return nil
+	}
+	return filtered
+}
+
+func isInternalProviderMetadataKey(key string) bool {
+	key = strings.TrimSpace(strings.ToLower(key))
+	if key == "" {
+		return false
+	}
+	if strings.HasPrefix(key, "clawn_") {
+		return true
+	}
+	switch key {
+	case "preflightreserveid", "managedllmdecisionmode", "managedllmavailableunitsbefore", "preflightreservedunits", "project_id", "sender_id", "chat_id":
+		return true
+	default:
+		return false
+	}
+}
+
+func isInternalProviderRequestTag(tag string) bool {
+	tag = strings.TrimSpace(strings.ToLower(tag))
+	if tag == "" {
+		return false
+	}
+	return tag == "clawn-managed" || strings.HasPrefix(tag, "agent:") || strings.HasPrefix(tag, "project:") || strings.HasPrefix(tag, "runtime:") || strings.HasPrefix(tag, "route:")
+}
+
+func isManagedCompatibleHost(apiBase string) bool {
+	u, err := url.Parse(apiBase)
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	return host == "litellm-proxy" || strings.HasSuffix(host, ".clawn.id") || strings.Contains(host, "clawn")
 }
