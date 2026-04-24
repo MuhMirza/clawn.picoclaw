@@ -60,5 +60,4 @@ func applyClawnAttribution(out map[string]any, agentID, model, channel, chatID s
 
 	out["metadata"] = metadata
 	out["request_tags"] = requestTags
-	out["agent_id"] = agentID
 }
