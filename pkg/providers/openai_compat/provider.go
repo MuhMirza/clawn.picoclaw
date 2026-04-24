@@ -186,7 +186,12 @@ func (p *Provider) buildRequestBody(
 		requestBody["end_user"] = endUser
 	}
 	if agentID, ok := options["agent_id"].(string); ok && agentID != "" {
-		requestBody["agent_id"] = agentID
+		// agent_id is internal Clawn/PicoClaw attribution. Forward it only to
+		// Clawn-managed compatible endpoints; third-party providers reject unknown
+		// fields (e.g. Gemini returns 400 for unknown name "agent_id").
+		if supportsAgentIDField(p.apiBase) {
+			requestBody["agent_id"] = agentID
+		}
 	}
 	if metadata, ok := options["metadata"].(map[string]any); ok && len(metadata) > 0 {
 		requestBody["metadata"] = metadata
@@ -507,4 +512,13 @@ func supportsPromptCacheKey(apiBase string) bool {
 	}
 	host := u.Hostname()
 	return host == "api.openai.com" || strings.HasSuffix(host, ".openai.azure.com")
+}
+
+func supportsAgentIDField(apiBase string) bool {
+	u, err := url.Parse(apiBase)
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	return host == "litellm-proxy" || strings.HasSuffix(host, ".clawn.id") || strings.Contains(host, "clawn")
 }
