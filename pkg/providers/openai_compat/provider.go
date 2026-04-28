@@ -180,10 +180,14 @@ func (p *Provider) buildRequestBody(
 	}
 
 	if user, ok := options["user"].(string); ok && user != "" {
-		requestBody["user"] = user
+		if supportsUserField(p.apiBase) {
+			requestBody["user"] = user
+		}
 	}
 	if endUser, ok := options["end_user"].(string); ok && endUser != "" {
-		requestBody["end_user"] = endUser
+		if supportsEndUserField(p.apiBase) {
+			requestBody["end_user"] = endUser
+		}
 	}
 	if agentID, ok := options["agent_id"].(string); ok && agentID != "" {
 		// agent_id is internal Clawn/PicoClaw attribution. Forward it only to
@@ -211,6 +215,33 @@ func (p *Provider) buildRequestBody(
 	}
 
 	return requestBody
+}
+
+
+func supportsUserField(apiBase string) bool {
+	return supportsOpenAICompatAttributionFields(apiBase)
+}
+
+func supportsEndUserField(apiBase string) bool {
+	return supportsOpenAICompatAttributionFields(apiBase)
+}
+
+func supportsOpenAICompatAttributionFields(apiBase string) bool {
+	base := strings.ToLower(strings.TrimSpace(apiBase))
+	if base == "" {
+		return false
+	}
+	thirdPartyRejectors := []string{
+		"generativelanguage.googleapis.com",
+		"googleapis.com",
+		"aiplatform.googleapis.com",
+	}
+	for _, needle := range thirdPartyRejectors {
+		if strings.Contains(base, needle) {
+			return false
+		}
+	}
+	return true
 }
 
 func (p *Provider) applyCustomHeaders(req *http.Request) {
