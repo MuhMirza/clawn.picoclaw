@@ -1,4 +1,5 @@
 import { launcherFetch } from "@/api/http"
+import { buildApiPath } from "@/lib/base-path"
 
 // API client for Pico Channel configuration.
 
@@ -15,7 +16,7 @@ interface PicoSetupResponse {
   changed: boolean
 }
 
-const BASE_URL = ""
+const BASE_URL = buildApiPath("")
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await launcherFetch(`${BASE_URL}${path}`, options)

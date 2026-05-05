@@ -1,4 +1,7 @@
-import { isLauncherLoginPathname } from "@/lib/launcher-login-path"
+import {
+  getLauncherLoginPath,
+  isLauncherLoginPathname,
+} from "@/lib/launcher-login-path"
 
 function isLauncherLoginPath(): boolean {
   if (typeof globalThis.location === "undefined") {
@@ -35,7 +38,7 @@ export async function launcherFetch(
       typeof globalThis.location !== "undefined" &&
       !isLauncherLoginPath()
     ) {
-      globalThis.location.assign("/launcher-login")
+      globalThis.location.assign(getLauncherLoginPath())
     }
   }
   return res

@@ -16,6 +16,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { buildApiPath } from "@/lib/base-path"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -239,7 +240,7 @@ export function ExecSection({ form, onFieldChange }: ExecSectionProps) {
 
     setIsLoading(true)
     try {
-      const res = await fetch("/api/config/test-command-patterns", {
+      const res = await fetch(buildApiPath("/api/config/test-command-patterns"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

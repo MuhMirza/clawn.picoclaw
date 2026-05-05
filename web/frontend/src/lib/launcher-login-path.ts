@@ -1,3 +1,5 @@
+import { stripBasePath, withBasePath } from "@/lib/base-path"
+
 /** Normalize URL pathname for comparisons (trailing slashes, empty). */
 export function normalizePathname(p: string): string {
   const t = p.replace(/\/+$/, "")
@@ -5,5 +7,9 @@ export function normalizePathname(p: string): string {
 }
 
 export function isLauncherLoginPathname(pathname: string): boolean {
-  return normalizePathname(pathname) === "/launcher-login"
+  return normalizePathname(stripBasePath(pathname)) === "/launcher-login"
+}
+
+export function getLauncherLoginPath(): string {
+  return withBasePath("/launcher-login")
 }

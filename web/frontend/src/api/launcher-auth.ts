@@ -1,3 +1,5 @@
+import { buildApiPath } from "@/lib/base-path"
+
 /**
  * Dashboard launcher token login. Uses plain fetch (not launcherFetch) to avoid
  * redirect loops on 401 while on the login page.
@@ -5,7 +7,7 @@
 export async function postLauncherDashboardLogin(
   token: string,
 ): Promise<boolean> {
-  const res = await fetch("/api/auth/login", {
+  const res = await fetch(buildApiPath("/api/auth/login"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
@@ -28,7 +30,7 @@ export type LauncherAuthStatus = {
 }
 
 export async function getLauncherAuthStatus(): Promise<LauncherAuthStatus> {
-  const res = await fetch("/api/auth/status", {
+  const res = await fetch(buildApiPath("/api/auth/status"), {
     method: "GET",
     credentials: "same-origin",
   })
@@ -39,7 +41,7 @@ export async function getLauncherAuthStatus(): Promise<LauncherAuthStatus> {
 }
 
 export async function postLauncherDashboardLogout(): Promise<boolean> {
-  const res = await fetch("/api/auth/logout", {
+  const res = await fetch(buildApiPath("/api/auth/logout"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",

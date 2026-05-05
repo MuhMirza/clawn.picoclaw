@@ -5,12 +5,14 @@ import ReactDOM from "react-dom/client"
 
 import "./i18n"
 import "./index.css"
+import { getBasePath } from "@/lib/base-path"
 import { routeTree } from "./routeTree.gen"
 
 const queryClient = new QueryClient()
 
 const router = createRouter({
   routeTree,
+  basepath: getBasePath() || "/",
   context: {
     queryClient,
   },

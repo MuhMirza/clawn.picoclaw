@@ -11,6 +11,7 @@ import {
   logoutOAuth,
   pollOAuthFlow,
 } from "@/api/oauth"
+import { withBasePath } from "@/lib/base-path"
 
 type FlowWatchMode = "" | "status" | "poll"
 
@@ -137,7 +138,7 @@ export function useCredentialsPage() {
     setWatchMode("status")
     setPollIntervalMs(700)
 
-    window.history.replaceState({}, "", window.location.pathname)
+    window.history.replaceState({}, "", withBasePath("/credentials"))
   }, [])
 
   useEffect(() => {

@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { withBasePath } from "@/lib/base-path"
 import { useTheme } from "@/hooks/use-theme"
 
 function LauncherLoginPage() {
@@ -59,7 +60,7 @@ function LauncherLoginPage() {
       try {
         const ok = await postLauncherDashboardLogin(tokenValue)
         if (ok) {
-          globalThis.location.assign("/")
+          globalThis.location.assign(withBasePath("/"))
           return
         }
         setError(t("launcherLogin.errorInvalid"))
