@@ -338,6 +338,21 @@ func (h *Handler) TryAutoStartGateway() {
 		return
 	}
 
+	// Fallback truth source: if health is already responding, treat the gateway as
+	// effectively running and DO NOT spawn a duplicate process just because the pid
+	// file is stale/missing for a moment. This is important in containerized flows
+	// where launcher startup races with pid-file persistence.
+	if cfg, err := config.LoadConfig(h.configPath); err == nil {
+		if _, statusCode, healthErr := h.getGatewayHealth(cfg, 800*time.Millisecond); healthErr == nil && statusCode == http.StatusOK {
+			gateway.mu.Lock()
+			setGatewayRuntimeStatusLocked("running")
+			refreshPicoTokensLocked(h.configPath)
+			gateway.mu.Unlock()
+			logger.InfoC("gateway", "Gateway health endpoint already reachable; skipping duplicate auto-start")
+			return
+		}
+	}
+
 	gateway.mu.Lock()
 	defer gateway.mu.Unlock()
 

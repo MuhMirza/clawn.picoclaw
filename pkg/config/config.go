@@ -21,8 +21,10 @@ import (
 // rrCounter is a global counter for round-robin load balancing across models.
 var rrCounter atomic.Uint64
 
-// CurrentVersion is the latest config schema version
-const CurrentVersion = 2
+// CurrentVersion is the latest config schema version used by the launcher build.
+// AiAgenz-managed PicoClaw runtimes currently persist schema v3 configs, so the
+// launcher-side config package must accept/read/write version 3 as well.
+const CurrentVersion = 3
 
 // Config is the current config structure with version support.
 type Config struct {
@@ -31,7 +33,8 @@ type Config struct {
 	Agents    AgentsConfig    `json:"agents"              yaml:"-"`
 	Bindings  []AgentBinding  `json:"bindings,omitempty"  yaml:"-"`
 	Session   SessionConfig   `json:"session,omitempty"   yaml:"-"`
-	Channels  ChannelsConfig  `json:"channels"            yaml:"channels"`
+	// Support both legacy v2 key "channels" and newer v3 key "channel_list".
+	Channels  ChannelsConfig  `json:"channel_list"        yaml:"channel_list"`
 	ModelList SecureModelList `json:"model_list"          yaml:"model_list"` // New model-centric provider configuration
 	Gateway   GatewayConfig   `json:"gateway"             yaml:"-"`
 	Hooks     HooksConfig     `json:"hooks,omitempty"     yaml:"-"`

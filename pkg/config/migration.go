@@ -513,6 +513,22 @@ func loadConfigV0(data []byte) (migratable, error) {
 
 // loadConfigV1 loads a version 1 config (current schema)
 func loadConfig(data []byte) (*Config, error) {
+	// Normalize newer schema aliases before decoding into the launcher config struct.
+	// AiAgenz-managed runtimes persist v3 using `channel_list`; older launcher builds
+	// expected `channels`. This compatibility rewrite keeps the launcher PicoClaw-only
+	// image able to read runtime-managed configs without touching the gateway runtime.
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err == nil {
+		if _, hasChannels := raw["channel_list"]; hasChannels {
+			if _, exists := raw["channels"]; !exists {
+				raw["channels"] = raw["channel_list"]
+			}
+		}
+		if normalized, err := json.Marshal(raw); err == nil {
+			data = normalized
+		}
+	}
+
 	cfg := DefaultConfig()
 
 	// Pre-scan the JSON to check how many model_list entries the user provided.
